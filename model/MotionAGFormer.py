@@ -8,6 +8,8 @@ from model.modules.attention import Attention
 from model.modules.graph import GCN
 from model.modules.mlp import MLP
 from model.modules.tcn import MultiScaleTCN
+from model.memory.config import MemoryConfig
+from model.memory.memory_system import MemorySystem
 
 
 class AGFormerBlock(nn.Module):
@@ -202,7 +204,7 @@ class MotionAGFormer(nn.Module):
                  drop=0., drop_path=0., use_layer_scale=True, layer_scale_init_value=1e-5, use_adaptive_fusion=True,
                  num_heads=4, qkv_bias=False, qkv_scale=None, hierarchical=False, num_joints=17,
                  use_temporal_similarity=True, temporal_connection_len=1, use_tcn=False, graph_only=False,
-                 neighbour_num=4, n_frames=243):
+                 neighbour_num=4, n_frames=243, memory_config=None):
         """
         :param n_layers: Number of layers.
         :param dim_in: Input dimension.
@@ -228,6 +230,7 @@ class MotionAGFormer(nn.Module):
         :param graph_only: Uses GCN instead of GraphFormer in the graph branch.
         :param neighbour_num: Number of neighbors for temporal GCN similarity.
         :param n_frames: Number of frames. Default is 243
+        :param memory_config: Optional MemoryConfig for post-backbone memory.
         """
         super().__init__()
 
@@ -263,11 +266,26 @@ class MotionAGFormer(nn.Module):
 
         self.head = nn.Linear(dim_rep, dim_out)
 
-    def forward(self, x, return_rep=False):
-        """
-        :param x: tensor with shape [B, T, J, C] (T=243, J=17, C=3)
-        :param return_rep: Returns motion representation feature volume (In case of using this as backbone)
-        """
+        # Memory lives between the original representation and regression head.
+        # Default disabled mode preserves the original parameter keys and output.
+        if memory_config is None:
+            memory_config = MemoryConfig(
+                window_size=n_frames,
+                chunk_size=min(27, n_frames),
+                num_joints=num_joints,
+                dim_rep=dim_rep,
+                pose_dim=dim_out,
+            )
+        if not isinstance(memory_config, MemoryConfig):
+            raise TypeError("memory_config must be a MemoryConfig.")
+        if (memory_config.window_size, memory_config.num_joints,
+                memory_config.dim_rep, memory_config.pose_dim) != (
+                    n_frames, num_joints, dim_rep, dim_out):
+            raise ValueError("MemoryConfig must match the backbone dimensions.")
+        self.memory_system = MemorySystem(memory_config)
+
+    def encode(self, x):
+        """Original full-window MotionAGFormer representation."""
         x = self.joints_embed(x)
         x = x + self.pos_embed
 
@@ -275,13 +293,38 @@ class MotionAGFormer(nn.Module):
             x = layer(x)
 
         x = self.norm(x)
-        x = self.rep_logit(x)
+        return self.rep_logit(x)
+
+    def forward(self, x, return_rep=False):
+        """Compatible tensor-only, independent-window forward.
+
+        return_rep=True still returns the original pre-memory representation.
+        To carry state across windows, call forward_window explicitly.
+        """
+        z = self.encode(x)
         if return_rep:
-            return x
+            return z
+        if not self.memory_system.config.enabled:
+            return self.head(z)
 
-        x = self.head(x)
+        b, t = z.shape[:2]
+        ids = torch.arange(t, device=z.device, dtype=torch.long).expand(b, -1)
+        mask = torch.ones((b, t), device=z.device, dtype=torch.bool)
+        streams = torch.arange(b, device=z.device, dtype=torch.long)
+        pose, _ = self.memory_system(z, None, ids, mask, streams, self.head)
+        return pose
 
-        return x
+    def forward_window(self, x, state, frame_ids, valid_mask, stream_ids):
+        """Stateful forward for contiguous, non-overlapping video windows.
+
+        The caller owns the returned state and passes it to the next window.
+        Frame IDs and stream IDs are int64; valid_mask is boolean.
+        In the foundation stage only the original-head bypass is implemented.
+        """
+        z = self.encode(x)
+        return self.memory_system(
+            z, state, frame_ids, valid_mask, stream_ids, self.head
+        )
 
 
 def _test():
