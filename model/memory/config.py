@@ -21,6 +21,9 @@ class MemoryConfig:
     working_relevance_momentum: float = 0.8
     working_freshness_weight: float = 0.3
     proxy_capacity: int = 16
+    proxy_match_threshold: float = 0.75
+    proxy_min_exposure: int = 459
+    proxy_initial_update: float = 0.2
     explicit_key_dim: int = 64
     explicit_value_dim: int = 128
 
@@ -62,3 +65,9 @@ class MemoryConfig:
             raise ValueError("working_relevance_momentum must be in [0, 1).")
         if not 0.0 <= self.working_freshness_weight < float("inf"):
             raise ValueError("working_freshness_weight must be finite and nonnegative.")
+        if not 0.0 <= self.proxy_match_threshold <= 1.0:
+            raise ValueError("proxy_match_threshold must be in [0, 1].")
+        if type(self.proxy_min_exposure) is not int or self.proxy_min_exposure < 0:
+            raise ValueError("proxy_min_exposure must be a nonnegative integer.")
+        if not 0.0 < self.proxy_initial_update < 1.0:
+            raise ValueError("proxy_initial_update must be in (0, 1).")
