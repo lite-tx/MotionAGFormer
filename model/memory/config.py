@@ -25,6 +25,12 @@ class MemoryConfig:
     sensory_heads: int = 4
     sensory_key_dim: int = 32
     sensory_value_dim: int = 32
+    sensory_use_ssi: bool = True
+    sensory_use_msm: bool = True
+    sensory_use_deep_update: bool = True
+    sensory_initial_decay: float = 0.95
+    ssi_initial_gain: float = 0.1
+    ssi_non_edge_weight: float = 0.01
     proxy_dim: int = 128
     pose_queries: int = 6
     pose_query_dim: int = 128
@@ -47,3 +53,6 @@ class MemoryConfig:
             raise ValueError("Working capacity must accommodate one chunk's admitted frames.")
         if self.enabled and (self.num_joints != 17 or self.pose_dim != 3):
             raise ValueError("Memory V1 is designed for the 17-joint, 3D pose protocol.")
+        for name in ("sensory_initial_decay", "ssi_initial_gain", "ssi_non_edge_weight"):
+            if not 0.0 < getattr(self, name) < 1.0:
+                raise ValueError(f"{name} must be strictly between zero and one.")
