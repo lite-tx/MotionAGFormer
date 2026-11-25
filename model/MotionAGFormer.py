@@ -319,7 +319,7 @@ class MotionAGFormer(nn.Module):
 
         The caller owns the returned state and passes it to the next window.
         Frame IDs and stream IDs are int64; valid_mask is boolean.
-        In the foundation stage only the original-head bypass is implemented.
+        With memory enabled, each chunk reads, predicts, and updates state.
         """
         z = self.encode(x)
         return self.memory_system(
