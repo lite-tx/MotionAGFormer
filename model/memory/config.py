@@ -42,6 +42,11 @@ class MemoryConfig:
     pose_query_heads: int = 4
     pose_body_bias: float = 2.0
 
+    fusion_hidden_dim: int = 128
+    fusion_initial_memory_mass: float = 0.1
+    decoder_hidden_dim: int = 128
+    decoder_initial_gain: float = 0.1
+
     def __post_init__(self):
         dimensions = (
             self.window_size, self.chunk_size, self.num_joints,
@@ -50,6 +55,7 @@ class MemoryConfig:
             self.explicit_value_dim, self.sensory_heads,
             self.sensory_key_dim, self.sensory_value_dim, self.proxy_dim,
             self.pose_queries, self.pose_query_dim, self.pose_query_heads,
+            self.fusion_hidden_dim, self.decoder_hidden_dim,
         )
         if any(type(n) is not int or n <= 0 for n in dimensions):
             raise ValueError("All memory dimensions and capacities must be positive integers.")
@@ -77,3 +83,6 @@ class MemoryConfig:
             raise ValueError("pose_query_dim must be divisible by pose_query_heads.")
         if not 0.0 <= self.pose_body_bias < float("inf"):
             raise ValueError("pose_body_bias must be finite and nonnegative.")
+        for name in ("fusion_initial_memory_mass", "decoder_initial_gain"):
+            if not 0.0 < getattr(self, name) < 1.0:
+                raise ValueError(f"{name} must be strictly between zero and one.")
