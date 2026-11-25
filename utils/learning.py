@@ -25,7 +25,7 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def load_model(args):
+def load_model(args, memory_config=None):
     act_mapper = {
         "gelu": nn.GELU,
         'relu': nn.ReLU
@@ -55,7 +55,8 @@ def load_model(args):
                                use_tcn=args.use_tcn,
                                graph_only=args.graph_only,
                                neighbour_num=args.neighbour_num,
-                               n_frames=args.n_frames)
+                               n_frames=args.n_frames,
+                               memory_config=memory_config)
     else:
         raise Exception("Undefined model name")
 
