@@ -1,0 +1,3 @@
+# Preserve original source bytes on every platform.
+frozen/* -text
+results/*.json -text

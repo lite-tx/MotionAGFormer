@@ -1,0 +1,29 @@
+{
+  "result": {
+    "variant": "h_query",
+    "seed": 20261111,
+    "epoch": 150,
+    "mpjpe_mm": 18.21779441833496,
+    "per_sequence_mpjpe_mm": {
+      "TS1": 9.72147274017334,
+      "TS2": 14.95858097076416,
+      "TS3": 10.948080062866211,
+      "TS4": 15.184629440307617,
+      "TS5": 31.144832611083984,
+      "TS6": 40.376914978027344
+    },
+    "test_targets": 2875,
+    "root_joint": 14,
+    "normal_flip_histories": "independent",
+    "checkpoint_sha256": "085863d38f5c45b74577761731b4d337bd0148ae1e3d9010998ba8ef3754edc5",
+    "model_sha256": "a639dda68626ef28c64b353833d181e066ff9cb5aa47249f30151e153a7c8ed3",
+    "test_data_sha256": "f01b0605944ead1eca5f731c90daa7deaa23ae86d3f084ff9f45a2d434e24018",
+    "seconds": 146.20804005861282,
+    "timestamp_utc": "2026-11-24T02:14:00.407260+00:00",
+    "selection": "fixed_epoch150"
+  },
+  "verification": {
+    "checkpoint_unchanged": true,
+    "difference_from_original_mm": 0.0
+  }
+}
