@@ -1,4 +1,4 @@
-"""Memory-enhanced MotionAGFormer (V1 foundation)."""
+"""Memory-enhanced MotionAGFormer (V1)."""
 
 from .config import MemoryConfig
 from .state import MemoryState, init_state
