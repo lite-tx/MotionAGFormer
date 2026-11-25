@@ -73,6 +73,11 @@ def main():
     if args.epochs <= start:
         raise ValueError('Configured epochs must exceed resume epoch.')
     out = Path(opts.output_dir)
+    if opts.resume:
+        if Path(opts.resume).resolve() != (out/'latest_epoch.pth.tr').resolve():
+            raise ValueError('Resume from latest_epoch.pth.tr in the same --output-dir.')
+    elif any((out/name).exists() for name in ('latest_epoch.pth.tr', 'best_epoch.pth.tr', 'metrics.jsonl')):
+        raise FileExistsError('Output directory contains an earlier run; resume or choose a new --output-dir.')
     out.mkdir(parents=True, exist_ok=True)
     for epoch in range(start, args.epochs):
         print(f'Epoch {epoch+1}/{args.epochs} | LR {[g["lr"] for g in optimizer.param_groups]}', flush=True)
