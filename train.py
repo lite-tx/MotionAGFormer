@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 
 import numpy as np
 import pkg_resources
@@ -64,7 +65,12 @@ def train_one_epoch(args, model, train_loader, optimizer, device, losses):
             else:
                 y[..., 2] = y[..., 2] - y[:, 0:1, 0:1, 2]  # Place the depth of first frame root to be 0
 
-        pred = model(x)  # (N, T, 17, 3)
+        if args.model_name == "SkeletonAGFormer" and getattr(args, "train_topology_aug", True):
+            from model.skeleton import H36M, sample_layout
+            layout = sample_layout(H36M)
+            pred = model(layout.apply(x), skeleton=layout.spec)
+        else:
+            pred = model(x)  # (N, T, 17, 3)
 
         optimizer.zero_grad()
 
@@ -277,6 +283,15 @@ def train(args, opts):
                                 data_stride_train=args.n_frames // 3, data_stride_test=args.n_frames,
                                 dt_root=args.data_root, dt_file=args.dt_file)  # Used for H36m evaluation
 
+    # Match preprocessing's seed, independent of training seed and worker scheduling.
+    random_state = random.getstate()
+    try:
+        random.seed(0)
+        datareader.get_split_id()
+    finally:
+        random.setstate(random_state)
+    if len(test_dataset) != len(datareader.split_id_test):
+        raise ValueError("test clips do not match evaluation metadata; check --test-subset and --dt-file")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = load_model(args)
     if torch.cuda.is_available():
@@ -336,10 +351,11 @@ def train(args, opts):
     checkpoint_path_latest = os.path.join(opts.new_checkpoint, 'latest_epoch.pth.tr')
     checkpoint_path_best = os.path.join(opts.new_checkpoint, 'best_epoch.pth.tr')
 
+    if opts.eval_only:
+        evaluate(args, model, test_loader, datareader, device)
+        return
+
     for epoch in range(epoch_start, args.epochs):
-        if opts.eval_only:
-            evaluate(args, model, test_loader, datareader, device)
-            exit()
 
         print(f"[INFO] epoch {epoch}")
         loss_names = ['3d_pose', '3d_scale', '2d_proj', 'lg', 'lv', '3d_velocity', 'angle', 'angle_velocity', 'total']
@@ -397,6 +413,8 @@ def main():
     args = get_config(opts.config)
     if opts.train_subsets:
         args.train_subset_list = opts.train_subsets
+    if bool(opts.test_subset) != bool(opts.dt_file):
+        raise ValueError("override --test-subset and --dt-file together")
     if opts.test_subset:
         args.subset_list = [opts.test_subset]
     if opts.dt_file:

@@ -50,7 +50,12 @@ def train_one_epoch(args, model, train_loader, optimizer, losses):
         if torch.cuda.is_available():
             x, y = x.cuda(), y.cuda()
 
-        pred = model(x)  # (N, T, 17, 3)
+        if args.model_name == "SkeletonAGFormer" and getattr(args, "train_topology_aug", True):
+            from model.skeleton import MPI, sample_layout
+            layout = sample_layout(MPI)
+            pred = model(layout.apply(x), skeleton=layout.spec)
+        else:
+            pred = model(x)  # (N, T, 17, 3)
 
         optimizer.zero_grad()
 
