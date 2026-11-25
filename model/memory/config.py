@@ -1,7 +1,7 @@
 """Central configuration for the post-backbone memory system.
 
 Defaults are design starting points, not experimentally validated settings.
-The foundation commit deliberately leaves memory computation disabled.
+Memory is opt-in; disabled mode preserves the original model.
 """
 
 from dataclasses import dataclass
