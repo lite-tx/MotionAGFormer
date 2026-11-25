@@ -82,10 +82,13 @@ class MemoryFoundationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.run_window(mask=bad_mask)
 
-    def test_unimplemented_memory_fails_explicitly(self):
-        system = MemorySystem(replace(self.config, enabled=True))
-        with self.assertRaises(NotImplementedError):
-            system(self.z, None, self.ids, self.mask, self.streams, self.head)
+    def test_enabled_memory_smoke(self):
+        system = MemorySystem(replace(self.config, enabled=True, write_stride=3))
+        pose, state = system(self.z, None, self.ids, self.mask, self.streams, self.head)
+        self.assertEqual(pose.shape, (2, 6, 17, 3))
+        self.assertTrue(torch.isfinite(pose).all())
+        self.assertTrue(state.sensory.valid.all())
+        self.assertEqual(state.working.valid.sum(1).tolist(), [2, 2])
 
     def test_fp32_matrix_with_half_features(self):
         state = init_state(self.config, 2, "cpu", torch.float16)
