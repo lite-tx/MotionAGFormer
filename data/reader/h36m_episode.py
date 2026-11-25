@@ -108,7 +108,8 @@ class H36MEpisodeDataset(Dataset):
     """
 
     def __init__(self, path, split='train', window_size=243,
-                 windows_per_episode=2, episode_stride=None, flip=True):
+                 windows_per_episode=2, episode_stride=None, flip=True,
+                 include_eval_metadata=False):
         if split not in ('train', 'test'):
             raise ValueError('split must be train or test.')
         if any(type(v) is not int or v <= 0 for v in (window_size, windows_per_episode)):
@@ -130,6 +131,18 @@ class H36MEpisodeDataset(Dataset):
             raw = pickle.load(f)[split]
         self.x, self.y, source, camera = _normalize(raw)
         self.episodes = _episodes(source, camera, self.length, episode_stride)
+        self.eval_metadata = None
+        if include_eval_metadata:
+            if split != 'test':
+                raise ValueError('Evaluation metadata is only available for the test split.')
+            n = len(source)
+            action = np.asarray(raw['action'])
+            factor = np.asarray(raw['2.5d_factor'])
+            gt = np.asarray(raw['joints_2.5d_image'])
+            if (action.shape != (n,) or factor.size != n or gt.shape != (n, 17, 3)):
+                raise ValueError('Invalid H36M evaluation metadata layout.')
+            self.eval_metadata = {'action': action, 'factor': factor.reshape(n),
+                                  'gt': gt, 'source': source}
 
     def __len__(self):
         return len(self.episodes)
