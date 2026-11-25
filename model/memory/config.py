@@ -39,6 +39,8 @@ class MemoryConfig:
     proxy_dim: int = 128
     pose_queries: int = 6
     pose_query_dim: int = 128
+    pose_query_heads: int = 4
+    pose_body_bias: float = 2.0
 
     def __post_init__(self):
         dimensions = (
@@ -47,7 +49,7 @@ class MemoryConfig:
             self.write_stride, self.proxy_capacity, self.explicit_key_dim,
             self.explicit_value_dim, self.sensory_heads,
             self.sensory_key_dim, self.sensory_value_dim, self.proxy_dim,
-            self.pose_queries, self.pose_query_dim,
+            self.pose_queries, self.pose_query_dim, self.pose_query_heads,
         )
         if any(type(n) is not int or n <= 0 for n in dimensions):
             raise ValueError("All memory dimensions and capacities must be positive integers.")
@@ -71,3 +73,7 @@ class MemoryConfig:
             raise ValueError("proxy_min_exposure must be a nonnegative integer.")
         if not 0.0 < self.proxy_initial_update < 1.0:
             raise ValueError("proxy_initial_update must be in (0, 1).")
+        if self.pose_query_dim % self.pose_query_heads:
+            raise ValueError("pose_query_dim must be divisible by pose_query_heads.")
+        if not 0.0 <= self.pose_body_bias < float("inf"):
+            raise ValueError("pose_body_bias must be finite and nonnegative.")
