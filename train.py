@@ -20,7 +20,7 @@ from data.reader.h36m import DataReaderH36M
 from data.reader.motion_dataset import MotionDataset3D
 from utils.data import flip_data
 from utils.tools import set_random_seed, get_config, print_args, create_directory_if_not_exists
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset, WeightedRandomSampler
 
 from utils.learning import load_model, AverageMeter, decay_lr_exponentially
 from utils.tools import count_param_numbers
@@ -42,6 +42,12 @@ def parse_args():
     parser.add_argument('--wandb-run-id', default=None, type=str)
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--eval-only', action='store_true')
+    parser.add_argument("--train-subsets", nargs="+", help="Train-only preprocessed detector subsets under data_root")
+    parser.add_argument("--test-subset", help="Single preprocessed evaluation subset")
+    parser.add_argument("--dt-file", help="Matching evaluation metadata pickle under data_root")
+    parser.add_argument("--skeleton-layout", choices=["canonical", "permuted", "holdout_sparse", "holdout_dense", "holdout_mixed"])
+    parser.add_argument("--disable-topology-aug", action="store_true")
+    parser.add_argument("--no-eval-flip", action="store_true")
     opts = parser.parse_args()
     return opts
 
@@ -98,7 +104,12 @@ def evaluate(args, model, test_loader, datareader, device):
         for x, y in tqdm(test_loader):
             x, y = x.to(device), y.to(device)
 
-            if args.flip:
+            if args.model_name == "MotionAGFormer" and getattr(args, "topology_eval_layout", "canonical") != "canonical":
+                from model.skeleton import H36M, eval_layout
+                from utils.skeleton_experiment import project_to_fixed
+                layout = eval_layout(H36M, args.topology_eval_layout)
+                x = project_to_fixed(layout.apply(x), layout.spec, H36M)
+            if getattr(args, "eval_flip", args.flip):
                 batch_input_flip = flip_data(x)
                 predicted_3d_pos_1 = model(x)
                 predicted_3d_pos_flip = model(batch_input_flip)
@@ -236,22 +247,35 @@ def train(args, opts):
     print_args(args)
     create_directory_if_not_exists(opts.new_checkpoint)
 
-    train_dataset = MotionDataset3D(args, args.subset_list, 'train')
+    train_subsets = getattr(args, "train_subset_list", args.subset_list)
+    if len(args.subset_list) != 1:
+        raise ValueError("H36M evaluator requires exactly one test subset and matching dt_file")
+    datasets = [MotionDataset3D(args, [name], 'train') for name in train_subsets] if not opts.eval_only else []
+    sampler = None
+    if any(len(ds) == 0 for ds in datasets):
+        raise ValueError("empty training detector subset")
+    if len(datasets) > 1:
+        train_dataset = ConcatDataset(datasets)
+        # Equal probability of sampling each detector, even with unequal sizes.
+        weights = [1. / len(ds) for ds in datasets for _ in range(len(ds))]
+        sampler = WeightedRandomSampler(weights, len(train_dataset), replacement=True)
+    elif datasets:
+        train_dataset = datasets[0]
+    else:
+        train_dataset = None
     test_dataset = MotionDataset3D(args, args.subset_list, 'test')
 
-    common_loader_params = {
-        'batch_size': args.batch_size,
-        'num_workers': opts.num_cpus - 1,
-        'pin_memory': True,
-        'prefetch_factor': (opts.num_cpus - 1) // 3,
-        'persistent_workers': True
-    }
-    train_loader = DataLoader(train_dataset, shuffle=True, **common_loader_params)
+    workers = max(0, opts.num_cpus - 1)
+    common_loader_params = {'batch_size': args.batch_size, 'num_workers': workers, 'pin_memory': True}
+    if workers:
+        common_loader_params.update(prefetch_factor=max(1, workers // 3), persistent_workers=True)
+    train_loader = (DataLoader(train_dataset, shuffle=sampler is None, sampler=sampler, **common_loader_params)
+                    if train_dataset is not None else None)
     test_loader = DataLoader(test_dataset, shuffle=False, **common_loader_params)
 
     datareader = DataReaderH36M(n_frames=args.n_frames, sample_stride=1,
                                 data_stride_train=args.n_frames // 3, data_stride_test=args.n_frames,
-                                dt_root='data/motion3d', dt_file=args.dt_file)  # Used for H36m evaluation
+                                dt_root=args.data_root, dt_file=args.dt_file)  # Used for H36m evaluation
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = load_model(args)
@@ -285,6 +309,8 @@ def train(args, opts):
                 if 'wandb_id' in checkpoint and opts.wandb_run_id is None:
                     wandb_id = checkpoint['wandb_id']
         else:
+            if opts.eval_only:
+                raise FileNotFoundError(checkpoint_path)
             print("[WARN] Checkpoint path is empty. Starting from the beginning")
             opts.resume = False
 
@@ -369,6 +395,24 @@ def main():
     set_random_seed(opts.seed)
     torch.backends.cudnn.benchmark = False
     args = get_config(opts.config)
+    if opts.train_subsets:
+        args.train_subset_list = opts.train_subsets
+    if opts.test_subset:
+        args.subset_list = [opts.test_subset]
+    if opts.dt_file:
+        args.dt_file = opts.dt_file
+    if opts.skeleton_layout:
+        args.topology_eval_layout = opts.skeleton_layout
+    if opts.disable_topology_aug:
+        args.train_topology_aug = False
+    if opts.no_eval_flip:
+        args.eval_flip = False
+    if getattr(args, "topology_eval_layout", "canonical") != "canonical":
+        if not opts.eval_only:
+            raise ValueError("held-out layouts must not be used for checkpoint selection")
+        args.eval_flip = False
+    if opts.eval_only and not opts.checkpoint:
+        raise ValueError("eval-only requires a trained checkpoint")
     
     train(args, opts)
 

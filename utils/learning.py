@@ -56,6 +56,25 @@ def load_model(args):
                                graph_only=args.graph_only,
                                neighbour_num=args.neighbour_num,
                                n_frames=args.n_frames)
+    elif args.model_name == "SkeletonAGFormer":
+        from model.SkeletonAGFormer import SkeletonAGFormer
+        if args.hierarchical or args.use_tcn or args.graph_only or args.drop_path != 0:
+            raise ValueError("SkeletonAGFormer v1 targets the original nonhierarchical XS configuration")
+        if args.act_layer != "gelu" or args.qk_scale is not None:
+            raise ValueError("SkeletonAGFormer v1 uses GELU and standard attention scaling")
+        model = SkeletonAGFormer(
+            n_layers=args.n_layers, dim_in=args.dim_in, dim_feat=args.dim_feat,
+            dim_rep=args.dim_rep, dim_out=args.dim_out, num_heads=args.num_heads,
+            n_frames=args.n_frames, mlp_ratio=args.mlp_ratio, qkv_bias=args.qkv_bias,
+            attn_drop=args.attn_drop, drop=args.drop, use_layer_scale=args.use_layer_scale,
+            layer_scale_init_value=args.layer_scale_init_value,
+            neighbour_num=args.neighbour_num, use_temporal_similarity=args.use_temporal_similarity,
+            temporal_connection_len=args.temporal_connection_len,
+            use_adaptive_fusion=args.use_adaptive_fusion,
+            canonical=getattr(args, "skeleton_canonical", "h36m"),
+            train_topology_aug=getattr(args, "train_topology_aug", True),
+            topology_eval_layout=getattr(args, "topology_eval_layout", "canonical"),
+            detector_noise=getattr(args, "detector_noise", 0.))
     else:
         raise Exception("Undefined model name")
 

@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument('--wandb-run-id', default=None, type=str)
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--eval-only', action='store_true')
+    parser.add_argument("--skeleton-layout", choices=["canonical", "permuted", "holdout_sparse", "holdout_dense", "holdout_mixed"])
+    parser.add_argument("--disable-topology-aug", action="store_true")
     opts = parser.parse_args()
     return opts
 
@@ -219,6 +221,8 @@ def train(args, opts):
                 if 'wandb_id' in checkpoint and opts.wandb_run_id is None:
                     wandb_id = checkpoint['wandb_id']
         else:
+            if opts.eval_only:
+                raise FileNotFoundError(checkpoint_path)
             print("[WARN] Checkpoint path is empty. Starting from the beginning")
             opts.resume = False
 
@@ -296,6 +300,15 @@ def main():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     args = get_config(opts.config)
+    if opts.skeleton_layout:
+        args.topology_eval_layout = opts.skeleton_layout
+    if opts.disable_topology_aug:
+        args.train_topology_aug = False
+    if getattr(args, "topology_eval_layout", "canonical") != "canonical":
+        if not opts.eval_only or args.model_name != "SkeletonAGFormer":
+            raise ValueError("MPI held-out layouts are supported for SkeletonAGFormer evaluation only")
+    if opts.eval_only and not opts.checkpoint:
+        raise ValueError("eval-only requires a trained checkpoint")
 
     train(args, opts)
 
